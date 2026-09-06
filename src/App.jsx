@@ -83,6 +83,7 @@ function App() {
     }
   };
 
+  // FUNCIÓN PARA ELIMINACIÓN DIRECTA
   const generateEliminationBracket = async () => {
     if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
     await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
@@ -121,6 +122,75 @@ function App() {
     else {
       alert(`✅ Cuadro generado: ${numMatches} partidos`);
       fetchMatches(selectedTournamentId);
+    }
+  };
+
+  // FUNCIÓN PARA TODOS CONTRA TODOS (CORREGIDA)
+  const generateRoundRobin = async () => {
+    if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
+
+    await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
+
+    const sorted = [...players].sort((a, b) => a.ranking - b.ranking);
+    let n = sorted.length;
+    
+    // Si es número impar de jugadores, agregar un BYE ficticio
+    const playersList = n % 2 === 0 ? [...sorted] : [...sorted, { id: 'BYE', name: 'BYE' }];
+    const totalPlayers = playersList.length;
+    const numRounds = totalPlayers - 1;
+    const matchesPerRound = totalPlayers / 2;
+    
+    const matchesToCreate = [];
+    let tableNum = 1;
+    
+    // ALGORITMO DEL CÍRCULO (Circle Method) - Estándar profesional
+    const fixed = playersList[0];
+    const rotating = playersList.slice(1);
+    
+    for (let round = 0; round < numRounds; round++) {
+      const currentRound = [fixed, ...rotating];
+      
+      for (let i = 0; i < matchesPerRound; i++) {
+        const player1 = currentRound[i];
+        const player2 = currentRound[totalPlayers - 1 - i];
+        
+        if (player1.id !== 'BYE' && player2.id !== 'BYE') {
+          matchesToCreate.push({
+            tournament_id: selectedTournamentId,
+            player1_id: player1.id,
+            player2_id: player2.id,
+            winner_id: null,
+            status: 'pending',
+            round: `Ronda ${round + 1}`,
+            table_number: tableNum++
+          });
+        }
+      }
+      
+      rotating.unshift(rotating.pop());
+    }
+
+    const { error } = await supabase.from('matches').insert(matchesToCreate);
+    
+    if (error) {
+      alert('❌ Error: ' + error.message);
+    } else {
+      alert(`✅ Calendario generado: ${matchesToCreate.length} partidos en ${numRounds} rondas`);
+      fetchMatches(selectedTournamentId);
+    }
+  };
+
+  // FUNCIÓN QUE DECIDE QUÉ ALGORITMO USAR
+  const handleGenerateBracket = async () => {
+    const tournament = tournaments.find(t => t.id === selectedTournamentId);
+    if (!tournament) return;
+
+    if (tournament.format === 'eliminacion') {
+      generateEliminationBracket();
+    } else if (tournament.format === 'round_robin') {
+      generateRoundRobin();
+    } else {
+      alert('⚠️ Formato no soportado');
     }
   };
 
@@ -275,7 +345,38 @@ function App() {
     );
   }
 
-   // VISTA DE TABLA DE POSICIONES
+  // VISTA DEL BRACKET
+  if (view === 'bracket') {
+    return (
+      <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏆 Cuadro del Torneo</h1>
+          <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            ← Volver
+          </button>
+        </div>
+
+        {matches.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
+            <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos generados aún.</p>
+          </div>
+        ) : (
+          <BracketView 
+            matches={matches} 
+            players={players} 
+            onMatchClick={(match) => {
+              if (match.status !== 'completed') {
+                openRefereeView(match);
+                setView('referee');
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // VISTA DE TABLA DE POSICIONES
   if (view === 'standings') {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -289,7 +390,6 @@ function App() {
         {matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
             <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos jugados aún.</p>
-            <p style={{ color: '#94a3b8' }}>Genera el calendario y juega algunos partidos para ver la tabla.</p>
           </div>
         ) : (
           <StandingsTable matches={matches} players={players} />
@@ -303,21 +403,19 @@ function App() {
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏓 Gestor de Torneos</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            📊 Posiciones
+          </button>
           <button onClick={() => setView('bracket')} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-            🏆 Ver Bracket
+            🏆 Bracket
           </button>
           <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
             ⚖️ Árbitro
           </button>
         </div>
       </div>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-            📊 Posiciones
-          </button>
-         
-        </div>
+
       <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
         <h2>1. Crear Torneo</h2>
         <form onSubmit={handleCreateTournament}>
@@ -356,7 +454,11 @@ function App() {
                       </li>
                     ))}
                   </ul>
-                  {players.length >= 2 && <button onClick={generateEliminationBracket} style={{ width: '100%', padding: '14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🏆 GENERAR CUADRO</button>}
+                  {players.length >= 2 && (
+                    <button onClick={handleGenerateBracket} style={{ width: '100%', padding: '14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      🏆 GENERAR {tournaments.find(t => t.id === selectedTournamentId)?.format === 'round_robin' ? 'CALENDARIO' : 'CUADRO'}
+                    </button>
+                  )}
                 </div>
 
                 <div style={{ flex: 1, minWidth: '300px' }}>
