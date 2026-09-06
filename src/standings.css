@@ -1,31 +1,308 @@
-/* Estilos adicionales para la tabla mejorada */
+.standings-container {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+}
+
+.standings-title {
+  color: #1e3a8a;
+  margin: 0 0 24px 0;
+  font-size: 28px;
+  text-align: center;
+  padding-bottom: 16px;
+  border-bottom: 3px solid #2563eb;
+}
+
+.standings-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.standings-table-wrapper {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 2px solid #e5e7eb;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+
+/* Encabezado con gradiente */
+.standings-table thead {
+  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+}
+
+.standings-table th {
+  padding: 16px 12px;
+  text-align: center;
+  font-weight: 700;
+  color: white;
+  border-bottom: 3px solid #1e40af;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
+.standings-table th:first-child {
+  border-top-left-radius: 10px;
+}
+
+.standings-table th:last-child {
+  border-top-right-radius: 10px;
+}
+
+/* Filas con colores alternados */
+.standings-table tbody tr {
+  transition: all 0.2s ease;
+}
+
+.standings-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.standings-table tbody tr:nth-child(odd) {
+  background: white;
+}
+
+.standings-table tbody tr:hover {
+  background: #eff6ff !important;
+  transform: scale(1.01);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+}
+
+.standings-table td {
+  padding: 14px 12px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 500;
+}
+
+/* Columnas específicas */
+.col-position {
+  width: 60px;
+  font-weight: 700;
+}
+
+.col-player {
+  text-align: left !important;
+  min-width: 180px;
+  font-weight: 600;
+}
+
+.col-stat {
+  width: 70px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Medallas para los 3 primeros */
+.position-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-weight: 800;
+  color: white;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  font-size: 16px;
+}
+
+.position-1 {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 3px 8px rgba(251, 191, 36, 0.4);
+}
+
+.position-2 {
+  background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+  box-shadow: 0 3px 8px rgba(148, 163, 184, 0.4);
+}
+
+.position-3 {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  box-shadow: 0 3px 8px rgba(217, 119, 6, 0.4);
+}
+
+/* Colores de fondo para los 3 primeros */
+.top-1 {
+  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%) !important;
+  border-left: 4px solid #f59e0b;
+}
+
+.top-2 {
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 100%) !important;
+  border-left: 4px solid #94a3b8;
+}
+
+.top-3 {
+  background: linear-gradient(90deg, #fed7aa 0%, #fdba74 100%) !important;
+  border-left: 4px solid #d97706;
+}
+
+/* Información del jugador */
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-name {
+  font-weight: 700;
+  color: #1e293b;
+  font-size: 15px;
+}
+
+.player-ranking {
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+
+/* Colores para estadísticas */
+.won {
+  color: #16a34a;
+  font-weight: 700;
+  background: #dcfce7;
+  border-radius: 6px;
+}
+
+.lost {
+  color: #dc2626;
+  font-weight: 700;
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+.coefficient {
+  color: #1e40af;
+  font-weight: 700;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 6px;
+  padding: 4px 8px;
+  border: 1px solid #93c5fd;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Leyenda */
+.standings-legend {
+  margin-top: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  border-left: 5px solid #2563eb;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.standings-legend h4 {
+  margin: 0 0 12px 0;
+  color: #1e3a8a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.legend-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 16px;
+}
+
+.legend-items span {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.legend-items strong {
+  color: #1e3a8a;
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+/* Reglas de desempate */
 .tiebreaker-rules {
-  margin-top: 15px;
-  padding: 15px;
-  background: #eff6ff;
-  border-radius: 8px;
-  border-left: 4px solid #3b82f6;
+  margin-top: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 10px;
+  border-left: 5px solid #3b82f6;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.1);
 }
 
 .tiebreaker-rules h4 {
-  margin: 0 0 10px 0;
+  margin: 0 0 12px 0;
   color: #1e40af;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .tiebreaker-rules ol {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 24px;
   color: #1e293b;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .tiebreaker-rules li {
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+  padding-left: 8px;
 }
 
-/* Responsive para tablas con muchas columnas */
+.tiebreaker-rules li::marker {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+/* Responsive */
 @media (max-width: 1024px) {
+  .standings-table {
+    font-size: 12px;
+  }
+
+  .standings-table th,
+  .standings-table td {
+    padding: 10px 8px;
+  }
+
+  .col-stat {
+    width: 55px;
+  }
+
+  .coefficient {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+}
+
+@media (max-width: 768px) {
+  .standings-container {
+    padding: 16px;
+  }
+
+  .standings-title {
+    font-size: 22px;
+  }
+
   .standings-table {
     font-size: 11px;
   }
@@ -36,42 +313,26 @@
   }
 
   .col-stat {
-    width: 50px;
+    width: 45px;
   }
 
-  .coefficient {
-    font-size: 11px;
-  }
-}
-
-@media (max-width: 768px) {
-  .standings-table {
-    font-size: 10px;
-  }
-
-  .standings-table th,
-  .standings-table td {
-    padding: 6px 2px;
-  }
-
-  .col-stat {
-    width: 40px;
+  .col-player {
+    min-width: 140px;
   }
 
   .player-name {
-    font-size: 12px;
+    font-size: 13px;
   }
 
   .player-ranking {
     font-size: 10px;
-    padding: 1px 6px;
+    padding: 2px 8px;
   }
 
   .position-badge {
-    width: 24px;
-    height: 24px;
-    line-height: 24px;
-    font-size: 12px;
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
   }
 
   .legend-items {
