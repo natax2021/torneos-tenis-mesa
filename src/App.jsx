@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabaseClient';
 import localforage from 'localforage';
 import BracketView from './BracketView';
+import StandingsTable from './StandingsTable';
 
 function App() {
   const [view, setView] = useState('admin');
@@ -274,12 +275,12 @@ function App() {
     );
   }
 
-  // VISTA DEL BRACKET
-  if (view === 'bracket') {
+   // VISTA DE TABLA DE POSICIONES
+  if (view === 'standings') {
     return (
-      <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
+      <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏆 Cuadro del Torneo</h1>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}>📊 Clasificación del Torneo</h1>
           <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
             ← Volver
           </button>
@@ -287,19 +288,11 @@ function App() {
 
         {matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
-            <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos generados aún.</p>
+            <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos jugados aún.</p>
+            <p style={{ color: '#94a3b8' }}>Genera el calendario y juega algunos partidos para ver la tabla.</p>
           </div>
         ) : (
-          <BracketView 
-            matches={matches} 
-            players={players} 
-            onMatchClick={(match) => {
-              if (match.status !== 'completed') {
-                openRefereeView(match);
-                setView('referee');
-              }
-            }}
-          />
+          <StandingsTable matches={matches} players={players} />
         )}
       </div>
     );
@@ -319,7 +312,12 @@ function App() {
           </button>
         </div>
       </div>
-
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            📊 Posiciones
+          </button>
+         
+        </div>
       <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
         <h2>1. Crear Torneo</h2>
         <form onSubmit={handleCreateTournament}>

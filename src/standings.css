@@ -1,0 +1,204 @@
+.standings-container {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.standings-title {
+  color: #1e3a8a;
+  margin: 0 0 20px 0;
+  font-size: 24px;
+  text-align: center;
+}
+
+.standings-empty {
+  text-align: center;
+  padding: 40px;
+  color: #64748b;
+}
+
+.standings-table-wrapper {
+  overflow-x: auto;
+}
+
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.standings-table thead {
+  background: #f1f5f9;
+}
+
+.standings-table th {
+  padding: 12px 8px;
+  text-align: center;
+  font-weight: bold;
+  color: #1e3a8a;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.standings-table td {
+  padding: 12px 8px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.standings-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.col-position {
+  width: 50px;
+}
+
+.col-player {
+  text-align: left !important;
+  min-width: 150px;
+}
+
+.col-stat {
+  width: 60px;
+}
+
+.position-badge {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+  line-height: 32px;
+  border-radius: 50%;
+  font-weight: bold;
+  color: white;
+  text-align: center;
+}
+
+.position-1 {
+  background: #fbbf24;
+  box-shadow: 0 2px 4px rgba(251, 191, 36, 0.3);
+}
+
+.position-2 {
+  background: #94a3b8;
+  box-shadow: 0 2px 4px rgba(148, 163, 184, 0.3);
+}
+
+.position-3 {
+  background: #d97706;
+  box-shadow: 0 2px 4px rgba(217, 119, 6, 0.3);
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-name {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.player-ranking {
+  font-size: 12px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.won {
+  color: #16a34a;
+  font-weight: bold;
+}
+
+.lost {
+  color: #dc2626;
+  font-weight: bold;
+}
+
+.coefficient {
+  color: #2563eb;
+  font-weight: bold;
+  background: #eff6ff;
+  border-radius: 4px;
+}
+
+.top-1 {
+  background: #fef3c7;
+}
+
+.top-2 {
+  background: #f1f5f9;
+}
+
+.top-3 {
+  background: #fed7aa;
+}
+
+.standings-legend {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 4px solid #2563eb;
+}
+
+.standings-legend h4 {
+  margin: 0 0 10px 0;
+  color: #1e3a8a;
+  font-size: 14px;
+}
+
+.legend-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.legend-items span {
+  display: flex;
+  align-items: center;
+}
+
+.legend-items strong {
+  color: #1e293b;
+  margin-right: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .standings-table {
+    font-size: 12px;
+  }
+
+  .standings-table th,
+  .standings-table td {
+    padding: 8px 4px;
+  }
+
+  .col-player {
+    min-width: 120px;
+  }
+
+  .player-name {
+    font-size: 13px;
+  }
+
+  .player-ranking {
+    font-size: 11px;
+  }
+
+  .position-badge {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+
+  .legend-items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
