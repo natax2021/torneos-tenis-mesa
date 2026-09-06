@@ -1,0 +1,72 @@
+/* Estilos personalizados para el bracket */
+.bracket__scroller {
+  overflow-x: auto;
+  padding: 20px 0;
+}
+
+.bracket__round {
+  min-width: 250px;
+  margin-right: 40px;
+}
+
+.bracket__round-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #1e3a8a;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.bracket__seed {
+  margin-bottom: 20px;
+}
+
+.bracket__seed-item {
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  transition: all 0.2s;
+}
+
+.bracket__seed-item:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.bracket__seed-team {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-weight: 500;
+}
+
+.bracket__seed-team:first-child {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.bracket__seed-team--winner {
+  color: #16a34a;
+  font-weight: bold;
+}
+
+.bracket__seed-score {
+  font-weight: bold;
+  color: #2563eb;
+}
+
+@media (max-width: 768px) {
+  .bracket__round {
+    min-width: 200px;
+    margin-right: 20px;
+  }
+  
+  .bracket__seed-item {
+    padding: 8px;
+  }
+  
+  .bracket__seed-team {
+    font-size: 14px;
+  }
+}

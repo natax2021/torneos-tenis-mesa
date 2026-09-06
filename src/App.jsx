@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabaseClient';
 import localforage from 'localforage';
+import { Bracket, Seed, SeedItem, SeedTeam, SeedTime } from 'react-brackets';
+import './bracket.css';
 
 function App() {
-  const [view, setView] = useState('admin'); // 'admin' o 'referee'
+  const [view, setView] = useState('admin'); // 'admin', 'referee', o 'bracket'
   const [tournaments, setTournaments] = useState([]);
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -14,7 +16,6 @@ function App() {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerRanking, setNewPlayerRanking] = useState(1);
 
-  // Estados para el Modo Árbitro
   const [activeMatch, setActiveMatch] = useState(null);
   const [currentSet, setCurrentSet] = useState({ p1: 0, p2: 0 });
   const [sets, setSets] = useState([]);
@@ -25,7 +26,6 @@ function App() {
     fetchTournaments();
     updatePendingCount();
     
-    // Escuchar cambios de conexión
     const handleOnline = () => { setIsOnline(true); syncPendingScores(); };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
@@ -124,7 +124,6 @@ function App() {
     }
   };
 
-  // --- LÓGICA DEL ÁRBITRO ---
   const getPlayerName = (playerId) => {
     if (!playerId) return 'BYE';
     const player = players.find(p => p.id === playerId);
@@ -142,7 +141,6 @@ function App() {
     const newSet = { ...currentSet };
     newSet[player] += 1;
     
-    // Regla de tenis de mesa: ganar a 11 con diferencia de 2
     if ((newSet.p1 >= 11 || newSet.p2 >= 11) && Math.abs(newSet.p1 - newSet.p2) >= 2) {
       setSets([...sets, newSet]);
       setCurrentSet({ p1: 0, p2: 0 });
@@ -155,7 +153,6 @@ function App() {
     const finalSets = [...sets, currentSet].filter(s => s.p1 > 0 || s.p2 > 0);
     if (finalSets.length === 0) return alert('⚠️ El partido no ha comenzado');
 
-    // Determinar ganador por mayoría de sets
     const p1SetsWon = finalSets.filter(s => s.p1 > s.p2).length;
     const p2SetsWon = finalSets.filter(s => s.p2 > s.p1).length;
     const winnerId = p1SetsWon > p2SetsWon ? activeMatch.player1_id : activeMatch.player2_id;
@@ -175,7 +172,7 @@ function App() {
       updatePendingCount();
     }
     
-    setActiveMatch(null); // Volver a la lista
+    setActiveMatch(null);
     fetchMatches(selectedTournamentId);
   };
 
@@ -220,7 +217,35 @@ function App() {
     }
   };
 
-  // --- VISTA DEL ÁRBITRO ---
+  // Transformar partidos en estructura de bracket
+  const generateBracketData = () => {
+    if (matches.length === 0) return [];
+
+    // Agrupar partidos por ronda
+    const rounds = {};
+    matches.forEach(match => {
+      if (!rounds[match.round]) rounds[match.round] = [];
+      rounds[match.round].push(match);
+    });
+
+    // Convertir a formato de react-brackets
+    const bracketData = Object.keys(rounds).sort().map(roundName => ({
+      title: roundName,
+      seeds: rounds[roundName].map(match => ({
+        id: match.id,
+        teams: [
+          { name: getPlayerName(match.player1_id), score: match.status === 'completed' ? (match.winner_id === match.player1_id ? '✓' : '') : undefined },
+          { name: getPlayerName(match.player2_id), score: match.status === 'completed' ? (match.winner_id === match.player2_id ? '✓' : '') : undefined }
+        ],
+        date: '',
+        link: { text: match.status === 'completed' ? 'Finalizado' : 'Pendiente' }
+      }))
+    }));
+
+    return bracketData;
+  };
+
+  // VISTA DEL ÁRBITRO
   if (view === 'referee' && activeMatch) {
     const p1Name = getPlayerName(activeMatch.player1_id);
     const p2Name = getPlayerName(activeMatch.player2_id);
@@ -232,7 +257,7 @@ function App() {
         </button>
 
         <div style={{ background: isOnline ? '#dcfce7' : '#fee2e2', color: isOnline ? '#166534' : '#991b1b', padding: '10px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>
-          {isOnline ? '🟢 En línea' : '🔴 MODO OFFLINE (Se guardará localmente)'}
+          {isOnline ? '🟢 En línea' : '🔴 MODO OFFLINE'}
           {pendingCount > 0 && <span style={{ marginLeft: '10px', background: '#991b1b', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '12px' }}>{pendingCount} pendientes</span>}
         </div>
 
@@ -278,14 +303,46 @@ function App() {
     );
   }
 
-  // --- VISTA DE ADMINISTRADOR ---
+  // VISTA DEL BRACKET VISUAL
+  if (view === 'bracket') {
+    const bracketData = generateBracketData();
+
+    return (
+      <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏆 Cuadro del Torneo</h1>
+          <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            ← Volver al Admin
+          </button>
+        </div>
+
+        {bracketData.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
+            <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos generados aún.</p>
+            <p style={{ color: '#94a3b8' }}>Genera el cuadro desde el modo administrador.</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto', paddingBottom: '20px' }}>
+            <Bracket rounds={bracketData} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // VISTA DE ADMINISTRADOR
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '900px', margin: '0 auto', padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏓 Gestor de Torneos</h1>
-        <button onClick={() => setView(view === 'admin' ? 'referee' : 'admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-          {view === 'admin' ? '⚖️ Modo Árbitro' : '⚙️ Modo Admin'}
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => setView('bracket')} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            🏆 Ver Bracket
+          </button>
+          <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+            ⚖️ Modo Árbitro
+          </button>
+        </div>
       </div>
 
       <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
