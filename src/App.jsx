@@ -72,58 +72,166 @@ function App() {
   };
 
   const handleAddPlayer = async (e) => {
-    e.preventDefault();
-    if (!newPlayerName.trim() || !selectedTournamentId) return alert('⚠️ Completa todos los campos');
-    const { error } = await supabase.from('players').insert([{ name: newPlayerName.trim(), ranking: newPlayerRanking, tournament_id: selectedTournamentId }]);
-    if (error) alert('❌ Error: ' + error.message);
-    else {
-      setNewPlayerName('');
-      setNewPlayerRanking(players.length + 1);
-      fetchPlayers(selectedTournamentId);
+  e.preventDefault();
+  if (!newPlayerName.trim() || !selectedTournamentId) return alert('⚠️ Completa todos los campos');
+  
+  const { error } = await supabase.from('players').insert([{ 
+    name: newPlayerName.trim(), 
+    ranking: newPlayerRanking, 
+    tournament_id: selectedTournamentId 
+  }]);
+  
+  if (error) {
+    alert('❌ Error: ' + error.message);
+  } else {
+    setNewPlayerName('');
+    
+    // Recargar jugadores para obtener la lista actualizada
+    await fetchPlayers(selectedTournamentId);
+    
+    // Calcular el siguiente ranking disponible
+    const { data: updatedPlayers } = await supabase
+      .from('players')
+      .select('ranking')
+      .eq('tournament_id', selectedTournamentId)
+      .order('ranking', { ascending: true });
+    
+    if (updatedPlayers && updatedPlayers.length > 0) {
+      const maxRanking = Math.max(...updatedPlayers.map(p => p.ranking));
+      setNewPlayerRanking(maxRanking + 1);
+    } else {
+      setNewPlayerRanking(1);
     }
-  };
+  }
+};
 
   // FUNCIÓN PARA ELIMINACIÓN DIRECTA
   const generateEliminationBracket = async () => {
-    if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
-    await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
+  if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
 
-    const sorted = [...players].sort((a, b) => a.ranking - b.ranking);
-    let size = 2;
-    while (size < sorted.length) size *= 2;
+  await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
+
+  const sorted = [...players].sort((a, b) => a.ranking - b.ranking);
+  const n = sorted.length;
+  
+  // Calcular tamaño del bracket (siguiente potencia de 2)
+  let size = 2;
+  while (size < n) size *= 2;
+  
+  const numRounds = Math.log2(size); // Ej: 16 = 4 rondas
+  const numByes = size - n;
+  
+  const matchesToCreate = [];
+  let matchId = 1;
+
+  // Generar nombres de rondas
+  const roundNames = [];
+  for (let i = numRounds; i >= 1; i--) {
+    const matchesInRound = Math.pow(2, i - 1);
+    if (matchesInRound === 1) roundNames.push('Final');
+    else if (matchesInRound === 2) roundNames.push('Semifinales');
+    else if (matchesInRound === 4) roundNames.push('Cuartos de Final');
+    else if (matchesInRound === 8) roundNames.push('Octavos de Final');
+    else roundNames.push(`Ronda de ${matchesInRound * 2}`);
+  }
+  roundNames.reverse(); // Para que Ronda 1 sea la primera
+
+  // ALGORITMO DE SIEMBRA CORREGIDO
+  const generateSeedOrder = (bracketSize) => {
+    if (bracketSize === 2) return [1, 2];
+    if (bracketSize === 4) return [1, 4, 2, 3];
+    if (bracketSize === 8) return [1, 8, 4, 5, 2, 7, 3, 6];
+    if (bracketSize === 16) return [1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11];
     
-    const numMatches = size / 2;
-    const matchesToCreate = [];
+    // Algoritmo genérico
+    const order = [1, 2];
+    while (order.length < bracketSize) {
+      const newOrder = [];
+      const nextSize = order.length * 2;
+      for (let i = 0; i < order.length; i++) {
+        newOrder.push(order[i]);
+        newOrder.push(nextSize + 1 - order[i]);
+      }
+      order.length = 0;
+      order.push(...newOrder);
+    }
+    return order;
+  };
 
-    for (let i = 0; i < numMatches; i++) {
-      let seed1, seed2;
-      if (size === 2) { seed1 = 1; seed2 = 2; }
-      else if (size === 4) { seed1 = i === 0 ? 1 : 2; seed2 = i === 0 ? 4 : 3; }
-      else if (size === 8) {
-        const pairs = [[1,8], [4,5], [2,7], [3,6]];
-        seed1 = pairs[i][0]; seed2 = pairs[i][1];
-      } else { seed1 = i + 1; seed2 = size - i; }
+  const seedOrder = generateSeedOrder(size);
 
-      const player1 = sorted[seed1 - 1] || null;
-      const player2 = sorted[seed2 - 1] || null;
-      let winnerId = null, status = 'pending';
-      
-      if (player1 && !player2) { winnerId = player1.id; status = 'completed'; }
-      else if (!player1 && player2) { winnerId = player2.id; status = 'completed'; }
+  // RONDA 1: Generar partidos con jugadores y BYEs
+  const firstRoundMatches = [];
+  for (let i = 0; i < size / 2; i++) {
+    const seed1 = seedOrder[i * 2];
+    const seed2 = seedOrder[i * 2 + 1];
+    
+    const player1 = seed1 <= n ? sorted[seed1 - 1] : null;
+    const player2 = seed2 <= n ? sorted[seed2 - 1] : null;
 
+    let winnerId = null;
+    let status = 'pending';
+    
+    // Si uno tiene BYE, el otro avanza automáticamente
+    if (player1 && !player2) {
+      winnerId = player1.id;
+      status = 'completed';
+    } else if (!player1 && player2) {
+      winnerId = player2.id;
+      status = 'completed';
+    }
+
+    firstRoundMatches.push({
+      tournament_id: selectedTournamentId,
+      player1_id: player1?.id || null,
+      player2_id: player2?.id || null,
+      winner_id: winnerId,
+      status: status,
+      round: roundNames[0], // "Ronda 1"
+      table_number: i + 1,
+      round_number: 1
+    });
+  }
+
+  matchesToCreate.push(...firstRoundMatches);
+
+  // RONDAS SIGUIENTES: Generar partidos vacíos (cuartos, semis, final)
+  let currentRoundNumber = 2;
+  let matchesInPreviousRound = size / 2;
+
+  while (matchesInPreviousRound > 1) {
+    const matchesInThisRound = matchesInPreviousRound / 2;
+    const roundName = roundNames[currentRoundNumber - 1];
+
+    for (let i = 0; i < matchesInThisRound; i++) {
       matchesToCreate.push({
-        tournament_id: selectedTournamentId, player1_id: player1?.id || null, player2_id: player2?.id || null,
-        winner_id: winnerId, status: status, round: 'Ronda 1', table_number: i + 1
+        tournament_id: selectedTournamentId,
+        player1_id: null,
+        player2_id: null,
+        winner_id: null,
+        status: 'pending',
+        round: roundName,
+        table_number: matchId++,
+        round_number: currentRoundNumber
       });
     }
 
-    const { error } = await supabase.from('matches').insert(matchesToCreate);
-    if (error) alert('❌ Error: ' + error.message);
-    else {
-      alert(`✅ Cuadro generado: ${numMatches} partidos`);
-      fetchMatches(selectedTournamentId);
-    }
-  };
+    matchesInPreviousRound = matchesInThisRound;
+    currentRoundNumber++;
+  }
+
+  // Guardar en Supabase
+  const { error } = await supabase.from('matches').insert(matchesToCreate);
+  
+  if (error) {
+    alert('❌ Error: ' + error.message);
+  } else {
+    const firstRoundReal = firstRoundMatches.filter(m => m.status === 'pending').length;
+    const byes = firstRoundMatches.filter(m => m.status === 'completed').length;
+    alert(`✅ Cuadro completo generado:\n\n${n} jugadores\n${numByes} BYEs\n${firstRoundReal} partidos en Ronda 1\n${numRounds} rondas totales`);
+    fetchMatches(selectedTournamentId);
+  }
+};
 
   // FUNCIÓN PARA TODOS CONTRA TODOS (CORREGIDA)
   const generateRoundRobin = async () => {

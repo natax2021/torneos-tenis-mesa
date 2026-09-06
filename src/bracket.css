@@ -140,6 +140,50 @@
   }
 }
 
+/* Estilos para partidos vacíos y BYEs */
+.match-card.bye-match {
+  opacity: 0.6;
+  background: #f1f5f9;
+}
+
+.team.empty {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Conectores visuales entre rondas */
+.bracket-round {
+  position: relative;
+}
+
+.bracket-round:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: 50%;
+  width: 30px;
+  height: 2px;
+  background: #cbd5e1;
+}
+
+/* Responsive mejorado */
+@media (max-width: 768px) {
+  .bracket-scroll {
+    gap: 40px;
+  }
+
+  .bracket-round {
+    min-width: 160px;
+  }
+
+  .match-card {
+    padding: 8px;
+  }
+
+  .team-name {
+    font-size: 12px;
+  }
+}
 .match-card.completed .team.winner {
   animation: pulse 2s ease-in-out infinite;
 }
