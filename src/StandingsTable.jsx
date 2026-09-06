@@ -1,8 +1,36 @@
+import { useState, useEffect } from 'react';
+import { supabase } from './lib/supabaseClient';
 import './standings.css';
 
 export default function StandingsTable({ matches, players }) {
-  // Calcular estadísticas de cada jugador
-  const calculateStandings = () => {
+  const [standings, setStandings] = useState([]);
+  const [setsData, setSetsData] = useState([]);
+
+  // Cargar los sets reales desde Supabase
+  useEffect(() => {
+    const fetchSets = async () => {
+      if (matches.length === 0) return;
+
+      const matchIds = matches.map(m => m.id);
+      const { data, error } = await supabase
+        .from('sets')
+        .select('*')
+        .in('match_id', matchIds);
+
+      if (data) setSetsData(data);
+      if (error) console.error('Error al cargar sets:', error);
+    };
+
+    fetchSets();
+  }, [matches]);
+
+  // Calcular estadísticas completas
+  useEffect(() => {
+    if (players.length === 0) {
+      setStandings([]);
+      return;
+    }
+
     const standings = players.map(player => {
       // Partidos jugados, ganados, perdidos
       const playerMatches = matches.filter(m => 
@@ -14,33 +42,42 @@ export default function StandingsTable({ matches, players }) {
       const matchesWon = playerMatches.filter(m => m.winner_id === player.id).length;
       const matchesLost = matchesPlayed - matchesWon;
 
-      // Sets ganados y perdidos
+      // Sets ganados y perdidos (USANDO DATOS REALES)
       let setsWon = 0;
       let setsLost = 0;
-
-      // Puntos ganados y perdidos
       let pointsWon = 0;
       let pointsLost = 0;
 
-      // Calcular sets y puntos de cada partido
       playerMatches.forEach(match => {
         const isPlayer1 = match.player1_id === player.id;
         
-        // Obtener los sets de este partido desde la base de datos
-        // Como no tenemos acceso directo a los sets aquí, usamos una estimación
-        // En una implementación completa, haríamos una consulta a Supabase
-        if (match.winner_id === player.id) {
-          setsWon += 2; // Asumimos mejor de 3
-          setsLost += match.status === 'completed' ? (isPlayer1 ? 1 : 1) : 0;
-        } else {
-          setsLost += 2;
-          setsWon += match.status === 'completed' ? (isPlayer1 ? 1 : 1) : 0;
-        }
+        // Obtener los sets de este partido
+        const matchSets = setsData.filter(s => s.match_id === match.id);
+        
+        matchSets.forEach(set => {
+          if (isPlayer1) {
+            if (set.player1_score > set.player2_score) {
+              setsWon++;
+            } else {
+              setsLost++;
+            }
+            pointsWon += set.player1_score;
+            pointsLost += set.player2_score;
+          } else {
+            if (set.player2_score > set.player1_score) {
+              setsWon++;
+            } else {
+              setsLost++;
+            }
+            pointsWon += set.player2_score;
+            pointsLost += set.player1_score;
+          }
+        });
       });
 
       // Coeficientes
-      const setsCoefficient = setsLost > 0 ? (setsWon / setsLost).toFixed(2) : setsWon;
-      const pointsCoefficient = pointsLost > 0 ? (pointsWon / pointsLost).toFixed(2) : pointsWon;
+      const setsCoefficient = setsLost > 0 ? setsWon / setsLost : setsWon;
+      const pointsCoefficient = pointsLost > 0 ? pointsWon / pointsLost : pointsWon;
 
       return {
         player,
@@ -49,25 +86,43 @@ export default function StandingsTable({ matches, players }) {
         matchesLost,
         setsWon,
         setsLost,
-        setsCoefficient: parseFloat(setsCoefficient),
+        setsCoefficient: parseFloat(setsCoefficient.toFixed(3)),
         pointsWon,
         pointsLost,
-        pointsCoefficient: parseFloat(pointsCoefficient)
+        pointsCoefficient: parseFloat(pointsCoefficient.toFixed(3))
       };
     });
 
-    // Ordenar por: 1) Partidos ganados, 2) Coeficiente de sets
+    // Ordenar por criterios de desempate
     standings.sort((a, b) => {
+      // 1. Partidos ganados
       if (b.matchesWon !== a.matchesWon) {
         return b.matchesWon - a.matchesWon;
       }
-      return b.setsCoefficient - a.setsCoefficient;
+      
+      // 2. Enfrentamiento directo (si hay empate entre 2 jugadores)
+      const directMatch = matches.find(m => 
+        m.status === 'completed' &&
+        ((m.player1_id === a.player.id && m.player2_id === b.player.id) ||
+         (m.player1_id === b.player.id && m.player2_id === a.player.id))
+      );
+      
+      if (directMatch) {
+        if (directMatch.winner_id === a.player.id) return -1;
+        if (directMatch.winner_id === b.player.id) return 1;
+      }
+      
+      // 3. Coeficiente de sets
+      if (b.setsCoefficient !== a.setsCoefficient) {
+        return b.setsCoefficient - a.setsCoefficient;
+      }
+      
+      // 4. Coeficiente de puntos
+      return b.pointsCoefficient - a.pointsCoefficient;
     });
 
-    return standings;
-  };
-
-  const standings = calculateStandings();
+    setStandings(standings);
+  }, [matches, players, setsData]);
 
   return (
     <div className="standings-container">
@@ -75,7 +130,10 @@ export default function StandingsTable({ matches, players }) {
       
       {standings.length === 0 ? (
         <div className="standings-empty">
-          <p>No hay jugadores registrados aún.</p>
+          <p>No hay partidos jugados aún.</p>
+          <p style={{ fontSize: '14px', color: '#94a3b8' }}>
+            Juega algunos partidos para ver la clasificación.
+          </p>
         </div>
       ) : (
         <div className="standings-table-wrapper">
@@ -89,7 +147,10 @@ export default function StandingsTable({ matches, players }) {
                 <th className="col-stat">PP</th>
                 <th className="col-stat">SG</th>
                 <th className="col-stat">SP</th>
-                <th className="col-stat">Coef</th>
+                <th className="col-stat">Coef Sets</th>
+                <th className="col-stat">PG</th>
+                <th className="col-stat">PP</th>
+                <th className="col-stat">Coef Pts</th>
               </tr>
             </thead>
             <tbody>
@@ -112,6 +173,9 @@ export default function StandingsTable({ matches, players }) {
                   <td className="col-stat">{standing.setsWon}</td>
                   <td className="col-stat">{standing.setsLost}</td>
                   <td className="col-stat coefficient">{standing.setsCoefficient}</td>
+                  <td className="col-stat">{standing.pointsWon}</td>
+                  <td className="col-stat">{standing.pointsLost}</td>
+                  <td className="col-stat coefficient">{standing.pointsCoefficient}</td>
                 </tr>
               ))}
             </tbody>
@@ -127,7 +191,19 @@ export default function StandingsTable({ matches, players }) {
           <span><strong>PP:</strong> Partidos Perdidos</span>
           <span><strong>SG:</strong> Sets Ganados</span>
           <span><strong>SP:</strong> Sets Perdidos</span>
-          <span><strong>Coef:</strong> Coeficiente (SG/SP)</span>
+          <span><strong>Coef Sets:</strong> SG ÷ SP</span>
+          <span><strong>PG (pts):</strong> Puntos Ganados</span>
+          <span><strong>PP (pts):</strong> Puntos Perdidos</span>
+          <span><strong>Coef Pts:</strong> PG ÷ PP</span>
+        </div>
+        <div className="tiebreaker-rules">
+          <h4>Criterios de Desempate (en orden):</h4>
+          <ol>
+            <li>Mayor número de partidos ganados</li>
+            <li>Resultado del enfrentamiento directo (serie particular)</li>
+            <li>Mayor coeficiente de sets (SG ÷ SP)</li>
+            <li>Mayor coeficiente de puntos (PG ÷ PP)</li>
+          </ol>
         </div>
       </div>
     </div>
