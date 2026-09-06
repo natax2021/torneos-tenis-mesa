@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './lib/supabaseClient';
 import localforage from 'localforage';
-import { Bracket, Seed, SeedItem, SeedTeam, SeedTime } from 'react-brackets';
-import './bracket.css';
+import BracketView from './BracketView';
 
 function App() {
-  const [view, setView] = useState('admin'); // 'admin', 'referee', o 'bracket'
+  const [view, setView] = useState('admin');
   const [tournaments, setTournaments] = useState([]);
   const [players, setPlayers] = useState([]);
   const [matches, setMatches] = useState([]);
@@ -217,34 +216,6 @@ function App() {
     }
   };
 
-  // Transformar partidos en estructura de bracket
-  const generateBracketData = () => {
-    if (matches.length === 0) return [];
-
-    // Agrupar partidos por ronda
-    const rounds = {};
-    matches.forEach(match => {
-      if (!rounds[match.round]) rounds[match.round] = [];
-      rounds[match.round].push(match);
-    });
-
-    // Convertir a formato de react-brackets
-    const bracketData = Object.keys(rounds).sort().map(roundName => ({
-      title: roundName,
-      seeds: rounds[roundName].map(match => ({
-        id: match.id,
-        teams: [
-          { name: getPlayerName(match.player1_id), score: match.status === 'completed' ? (match.winner_id === match.player1_id ? '✓' : '') : undefined },
-          { name: getPlayerName(match.player2_id), score: match.status === 'completed' ? (match.winner_id === match.player2_id ? '✓' : '') : undefined }
-        ],
-        date: '',
-        link: { text: match.status === 'completed' ? 'Finalizado' : 'Pendiente' }
-      }))
-    }));
-
-    return bracketData;
-  };
-
   // VISTA DEL ÁRBITRO
   if (view === 'referee' && activeMatch) {
     const p1Name = getPlayerName(activeMatch.player1_id);
@@ -253,7 +224,7 @@ function App() {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '500px', margin: '0 auto', padding: '20px', background: '#f8fafc', minHeight: '100vh' }}>
         <button onClick={() => setActiveMatch(null)} style={{ marginBottom: '20px', padding: '10px', background: '#e2e8f0', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-          ← Volver a la lista
+          ← Volver
         </button>
 
         <div style={{ background: isOnline ? '#dcfce7' : '#fee2e2', color: isOnline ? '#166534' : '#991b1b', padding: '10px', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>
@@ -285,7 +256,7 @@ function App() {
 
         {sets.length > 0 && (
           <div style={{ background: 'white', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-            <h4 style={{ margin: '0 0 10px 0', color: '#64748b' }}>SETS COMPLETADOS:</h4>
+            <h4 style={{ margin: '0 0 10px 0', color: '#64748b' }}>SETS:</h4>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               {sets.map((s, i) => (
                 <div key={i} style={{ background: '#f1f5f9', padding: '8px 12px', borderRadius: '6px', fontWeight: 'bold' }}>
@@ -297,34 +268,38 @@ function App() {
         )}
 
         <button onClick={saveMatchResult} disabled={sets.length === 0 && currentSet.p1 === 0 && currentSet.p2 === 0} style={{ width: '100%', padding: '18px', background: '#0f172a', color: 'white', border: 'none', borderRadius: '12px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', opacity: (sets.length === 0 && currentSet.p1 === 0 && currentSet.p2 === 0) ? 0.5 : 1 }}>
-          FINALIZAR Y GUARDAR PARTIDO
+          FINALIZAR PARTIDO
         </button>
       </div>
     );
   }
 
-  // VISTA DEL BRACKET VISUAL
+  // VISTA DEL BRACKET
   if (view === 'bracket') {
-    const bracketData = generateBracketData();
-
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏆 Cuadro del Torneo</h1>
           <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-            ← Volver al Admin
+            ← Volver
           </button>
         </div>
 
-        {bracketData.length === 0 ? (
+        {matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px', background: '#f8fafc', borderRadius: '12px' }}>
             <p style={{ fontSize: '18px', color: '#64748b' }}>No hay partidos generados aún.</p>
-            <p style={{ color: '#94a3b8' }}>Genera el cuadro desde el modo administrador.</p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto', paddingBottom: '20px' }}>
-            <Bracket rounds={bracketData} />
-          </div>
+          <BracketView 
+            matches={matches} 
+            players={players} 
+            onMatchClick={(match) => {
+              if (match.status !== 'completed') {
+                openRefereeView(match);
+                setView('referee');
+              }
+            }}
+          />
         )}
       </div>
     );
@@ -340,7 +315,7 @@ function App() {
             🏆 Ver Bracket
           </button>
           <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-            ⚖️ Modo Árbitro
+            ⚖️ Árbitro
           </button>
         </div>
       </div>
@@ -397,7 +372,7 @@ function App() {
                             <div style={{ fontSize: '14px', color: '#64748b' }}>{getPlayerName(match.player1_id)} vs {getPlayerName(match.player2_id)}</div>
                           </div>
                           <button onClick={() => openRefereeView(match)} disabled={match.status === 'completed'} style={{ padding: '8px 16px', background: match.status === 'completed' ? '#94a3b8' : '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            {match.status === 'completed' ? '✅ Finalizado' : '⚖️ Anotar'}
+                            {match.status === 'completed' ? '✅' : '⚖️'}
                           </button>
                         </div>
                       ))}

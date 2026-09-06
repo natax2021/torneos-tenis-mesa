@@ -1,72 +1,145 @@
-/* Estilos personalizados para el bracket */
-.bracket__scroller {
+.bracket-container {
+  width: 100%;
   overflow-x: auto;
   padding: 20px 0;
 }
 
-.bracket__round {
-  min-width: 250px;
-  margin-right: 40px;
+.bracket-scroll {
+  display: flex;
+  gap: 60px;
+  min-width: max-content;
+  padding: 20px;
 }
 
-.bracket__round-title {
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+}
+
+.round-title {
   font-size: 18px;
   font-weight: bold;
   color: #1e3a8a;
-  margin-bottom: 20px;
   text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 10px;
+  border-bottom: 3px solid #2563eb;
 }
 
-.bracket__seed {
-  margin-bottom: 20px;
+.round-matches {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  flex: 1;
+  gap: 20px;
 }
 
-.bracket__seed-item {
+.match-card {
   background: white;
   border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 10px;
-  transition: all 0.2s;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.bracket__seed-item:hover {
+.match-card:hover {
   border-color: #2563eb;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+  transform: translateY(-2px);
 }
 
-.bracket__seed-team {
+.match-card.completed {
+  background: #f0fdf4;
+  border-color: #16a34a;
+}
+
+.match-card.pending {
+  background: #fefce8;
+  border-color: #f59e0b;
+}
+
+.team {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  font-weight: 500;
+  padding: 10px 12px;
+  margin: 4px 0;
+  border-radius: 8px;
+  background: #f8fafc;
+  transition: all 0.2s;
 }
 
-.bracket__seed-team:first-child {
-  border-bottom: 1px solid #e5e7eb;
+.team.winner {
+  background: #dcfce7;
+  font-weight: bold;
 }
 
-.bracket__seed-team--winner {
+.team.bye {
+  opacity: 0.4;
+  font-style: italic;
+}
+
+.team-name {
+  font-size: 15px;
+  color: #1e293b;
+}
+
+.team-score {
+  font-size: 18px;
   color: #16a34a;
   font-weight: bold;
 }
 
-.bracket__seed-score {
-  font-weight: bold;
-  color: #2563eb;
+.match-info {
+  text-align: center;
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
 }
 
+/* Responsive */
 @media (max-width: 768px) {
-  .bracket__round {
-    min-width: 200px;
-    margin-right: 20px;
+  .bracket-scroll {
+    gap: 30px;
+    padding: 10px;
   }
-  
-  .bracket__seed-item {
-    padding: 8px;
+
+  .bracket-round {
+    min-width: 180px;
   }
-  
-  .bracket__seed-team {
-    font-size: 14px;
+
+  .round-title {
+    font-size: 16px;
   }
+
+  .match-card {
+    padding: 10px;
+  }
+
+  .team {
+    padding: 8px 10px;
+  }
+
+  .team-name {
+    font-size: 13px;
+  }
+}
+
+/* Animación para partidos completados */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.match-card.completed .team.winner {
+  animation: pulse 2s ease-in-out infinite;
 }
