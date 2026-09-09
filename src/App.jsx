@@ -127,7 +127,7 @@ function App() {
 
   const handleAddPlayerFromDb = async () => {
     if (!selectedPlayerDbId || !selectedTournamentId) {
-      return alert('⚠️ Selecciona un jugador y un torneo');
+      return alert('️ Selecciona un jugador y un torneo');
     }
     const selectedPlayer = playersDb.find(p => p.id === selectedPlayerDbId);
     if (!selectedPlayer) return;
@@ -456,94 +456,186 @@ function App() {
 
   // --- FUNCIONES DE EXPORTACIÓN ---
 
-  const exportBracketToPDF = () => {
+    const exportBracketToPDF = () => {
     if (matches.length === 0) return alert('⚠️ No hay partidos para exportar');
     
-    const tournament = tournaments.find(t => t.id === selectedTournamentId);
-    const doc = new jsPDF();
-    
-    // Título
-    doc.setFontSize(20);
-    doc.setTextColor(30, 58, 138);
-    doc.text(`Torneo: ${tournament?.name || 'Sin nombre'}`, 14, 20);
-    
-    doc.setFontSize(12);
-    doc.setTextColor(100, 116, 139);
-    doc.text(`Formato: ${tournament?.format === 'eliminacion' ? 'Eliminación Directa' : 'Todos contra Todos'}`, 14, 28);
-    doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES')}`, 14, 34);
-    doc.text(`Jugadores: ${players.length}`, 14, 40);
-    
-    // Tabla de partidos
-    const tableData = matches.map(m => [
-      m.table_number.toString(),
-      m.round,
-      getPlayerName(m.player1_id),
-      getPlayerName(m.player2_id),
-      m.status === 'completed' ? getPlayerName(m.winner_id) : 'Pendiente'
-    ]);
-    
-    doc.autoTable({
-      startY: 50,
-      head: [['Mesa', 'Ronda', 'Jugador 1', 'Jugador 2', 'Ganador']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [30, 58, 138], textColor: 255 },
-      styles: { fontSize: 10, cellPadding: 3 },
-      alternateRowStyles: { fillColor: [248, 250, 252] }
-    });
-    
-    doc.save(`bracket-${tournament?.name || 'torneo'}.pdf`);
-    alert('✅ PDF exportado correctamente');
+    try {
+      const tournament = tournaments.find(t => t.id === selectedTournamentId);
+      
+      const rounds = {};
+      matches.forEach(m => {
+        if (!rounds[m.round_number]) rounds[m.round_number] = [];
+        rounds[m.round_number].push(m);
+      });
+      
+      const roundNumbers = Object.keys(rounds).map(Number).sort((a, b) => a - b);
+      const totalRounds = roundNumbers.length;
+      
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      
+      doc.setFontSize(24);
+      doc.setTextColor(30, 58, 138);
+      doc.setFont(undefined, 'bold');
+      doc.text(`TORNEO: ${tournament?.name || 'Sin nombre'}`, 14, 20);
+      
+      doc.setFontSize(12);
+      doc.setTextColor(100, 116, 139);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Formato: ${tournament?.format === 'eliminacion' ? 'Eliminación Directa' : 'Todos contra Todos'}`, 14, 28);
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES')} | Jugadores: ${players.length}`, 14, 34);
+      
+      const roundWidth = 70;
+      const matchHeight = 35;
+      const startX = 20;
+      const startY = 45;
+      
+      roundNumbers.forEach((roundNum, roundIndex) => {
+        const roundMatches = rounds[roundNum];
+        const roundName = roundMatches[0]?.round || `Ronda ${roundNum}`;
+        const xPos = startX + (roundIndex * roundWidth);
+        
+        doc.setFontSize(14);
+        doc.setTextColor(30, 58, 138);
+        doc.setFont(undefined, 'bold');
+        doc.text(roundName.toUpperCase(), xPos, startY);
+        
+        doc.setDrawColor(59, 130, 246);
+        doc.setLineWidth(0.5);
+        doc.line(xPos, startY + 2, xPos + 60, startY + 2);
+        
+        roundMatches.forEach((match, matchIndex) => {
+          const yPos = startY + 10 + (matchIndex * (matchHeight + 15));
+          const p1Name = getPlayerName(match.player1_id);
+          const p2Name = getPlayerName(match.player2_id);
+          const p1Won = match.status === 'completed' && match.winner_id === match.player1_id;
+          const p2Won = match.status === 'completed' && match.winner_id === match.player2_id;
+          
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(xPos, yPos, 65, matchHeight, 3, 3, 'FD');
+          
+          doc.setFontSize(10);
+          if (p1Won) {
+            doc.setTextColor(22, 163, 74);
+            doc.setFont(undefined, 'bold');
+          } else {
+            doc.setTextColor(100, 116, 139);
+            doc.setFont(undefined, 'normal');
+          }
+          doc.text(p1Name.substring(0, 20), xPos + 3, yPos + 10);
+          
+          if (match.status === 'completed') {
+            // CORRECCIÓN AQUÍ: Usar ternario para cada argumento por separado
+            doc.setFillColor(p1Won ? 22 : 241, p1Won ? 163 : 245, p1Won ? 74 : 249);
+            doc.roundedRect(xPos + 52, yPos + 5, 10, 8, 2, 2, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text(p1Won ? '1' : '0', xPos + 57, yPos + 11);
+          }
+          
+          if (p2Won) {
+            doc.setTextColor(22, 163, 74);
+            doc.setFont(undefined, 'bold');
+          } else {
+            doc.setTextColor(100, 116, 139);
+            doc.setFont(undefined, 'normal');
+          }
+          doc.text(p2Name.substring(0, 20), xPos + 3, yPos + 22);
+          
+          if (match.status === 'completed') {
+            // CORRECCIÓN AQUÍ: Usar ternario para cada argumento por separado
+            doc.setFillColor(p2Won ? 22 : 241, p2Won ? 163 : 245, p2Won ? 74 : 249);
+            doc.roundedRect(xPos + 52, yPos + 17, 10, 8, 2, 2, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text(p2Won ? '1' : '0', xPos + 57, yPos + 23);
+          }
+          
+          if (roundIndex < totalRounds - 1) {
+            doc.setDrawColor(203, 213, 225);
+            doc.setLineWidth(0.3);
+            
+            doc.line(xPos + 65, yPos + (matchHeight / 2), xPos + 72, yPos + (matchHeight / 2));
+            
+            if (matchIndex % 2 === 0) {
+              const nextRoundY = startY + 10 + (Math.floor(matchIndex / 2) * (matchHeight + 15));
+              doc.line(xPos + 72, yPos + (matchHeight / 2), xPos + 72, nextRoundY + (matchHeight / 2));
+              doc.line(xPos + 72, nextRoundY + (matchHeight / 2), xPos + roundWidth, nextRoundY + (matchHeight / 2));
+            }
+          }
+          
+          if (match.status === 'completed') {
+            const winnerName = p1Won ? p1Name : p2Name;
+            doc.setFontSize(8);
+            doc.setTextColor(59, 130, 246);
+            doc.setFont(undefined, 'italic');
+            doc.text(`→ ${winnerName.substring(0, 15)}`, xPos + 3, yPos + matchHeight - 3);
+          }
+        });
+      });
+      
+      const fileName = `bracket-${tournament?.name?.replace(/\s+/g, '-') || 'torneo'}.pdf`;
+      doc.save(fileName);
+      alert('✅ PDF del bracket exportado correctamente');
+    } catch (error) {
+      console.error('Error al generar PDF:', error);
+      alert('❌ Error al generar PDF: ' + error.message);
+    }
   };
 
   const exportStandingsToExcel = () => {
     if (matches.length === 0) return alert('⚠️ No hay partidos para exportar');
     
-    // Calcular estadísticas
-    const standings = players.map(player => {
-      const playerMatches = matches.filter(m => 
-        m.status === 'completed' && 
-        (m.player1_id === player.id || m.player2_id === player.id)
-      );
+    try {
+      const standings = players.map(player => {
+        const playerMatches = matches.filter(m => 
+          m.status === 'completed' && 
+          (m.player1_id === player.id || m.player2_id === player.id)
+        );
+        
+        const matchesPlayed = playerMatches.length;
+        const matchesWon = playerMatches.filter(m => m.winner_id === player.id).length;
+        const matchesLost = matchesPlayed - matchesWon;
+        
+        return {
+          'Jugador': player.name,
+          'Ranking': player.ranking,
+          'PJ': matchesPlayed,
+          'PG': matchesWon,
+          'PP': matchesLost,
+          '% Victoria': matchesPlayed > 0 ? ((matchesWon / matchesPlayed) * 100).toFixed(1) + '%' : '0%'
+        };
+      });
       
-      const matchesPlayed = playerMatches.length;
-      const matchesWon = playerMatches.filter(m => m.winner_id === player.id).length;
-      const matchesLost = matchesPlayed - matchesWon;
+      standings.sort((a, b) => b.PG - a.PG);
       
-      return {
-        'Jugador': player.name,
-        'Ranking': player.ranking,
-        'PJ': matchesPlayed,
-        'PG': matchesWon,
-        'PP': matchesLost,
-        '% Victoria': matchesPlayed > 0 ? ((matchesWon / matchesPlayed) * 100).toFixed(1) + '%' : '0%'
-      };
-    });
-    
-    // Ordenar por partidos ganados
-    standings.sort((a, b) => b.PG - a.PG);
-    
-    const tournament = tournaments.find(t => t.id === selectedTournamentId);
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(standings);
-    
-    // Ajustar ancho de columnas
-    ws['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 12 }];
-    
-    XLSX.utils.book_append_sheet(wb, ws, 'Posiciones');
-    XLSX.writeFile(wb, `posiciones-${tournament?.name || 'torneo'}.xlsx`);
-    alert('✅ Excel exportado correctamente');
+      const tournament = tournaments.find(t => t.id === selectedTournamentId);
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(standings);
+      
+      ws['!cols'] = [{ wch: 25 }, { wch: 10 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 15 }];
+      
+      XLSX.utils.book_append_sheet(wb, ws, 'Posiciones');
+      
+      const fileName = `posiciones-${tournament?.name?.replace(/\s+/g, '-') || 'torneo'}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      alert('✅ Excel exportado correctamente');
+    } catch (error) {
+      console.error('Error al generar Excel:', error);
+      alert('❌ Error al generar Excel: ' + error.message);
+    }
   };
 
   const shareViaWhatsApp = () => {
-    if (matches.length === 0) return alert('️ No hay partidos para compartir');
+    if (matches.length === 0) return alert('⚠️ No hay partidos para compartir');
     
     const tournament = tournaments.find(t => t.id === selectedTournamentId);
     const completedMatches = matches.filter(m => m.status === 'completed');
     const pendingMatches = matches.filter(m => m.status === 'pending');
     
     let message = `🏓 *TORNEO: ${tournament?.name || 'Sin nombre'}*\n\n`;
-    message += `📊 *Resumen:*\n`;
+    message += ` *Resumen:*\n`;
     message += `• Jugadores: ${players.length}\n`;
     message += `• Partidos jugados: ${completedMatches.length}\n`;
     message += `• Partidos pendientes: ${pendingMatches.length}\n\n`;
@@ -637,7 +729,7 @@ function App() {
           <h1 style={{ color: '#1e3a8a', margin: 0 }}>📊 Clasificación del Torneo</h1>
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button onClick={exportStandingsToExcel} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📊 Excel</button>
-            <button onClick={shareViaWhatsApp} style={{ padding: '10px 20px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}> WhatsApp</button>
+            <button onClick={shareViaWhatsApp} style={{ padding: '10px 20px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📱 WhatsApp</button>
           </div>
           <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>← Volver</button>
         </div>
@@ -763,7 +855,7 @@ function App() {
                       📄 Exportar Bracket a PDF
                     </button>
                     <button onClick={exportStandingsToExcel} style={{ flex: 1, padding: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                       Exportar Tabla a Excel
+                      📊 Exportar Tabla a Excel
                     </button>
                     <button onClick={shareViaWhatsApp} style={{ flex: 1, padding: '12px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                       📱 Compartir por WhatsApp
@@ -774,7 +866,7 @@ function App() {
 
               <div style={{ marginTop: '20px', padding: '15px', background: '#fee2e2', borderRadius: '8px', border: '1px solid #ef4444' }}>
                 <button onClick={() => handleDeleteTournament(selectedTournamentId)} style={{ width: '100%', padding: '12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                  🗑️ ELIMINAR TORNEO
+                  ️ ELIMINAR TORNEO
                 </button>
               </div>
             </>

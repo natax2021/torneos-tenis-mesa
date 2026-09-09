@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
-    "jspdf": "^4.2.1",
-    "jspdf-autotable": "^5.0.8",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.5.31",
     "localforage": "^1.10.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
