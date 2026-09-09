@@ -3,6 +3,9 @@ import { supabase } from './lib/supabaseClient';
 import localforage from 'localforage';
 import BracketView from './BracketView';
 import StandingsTable from './StandingsTable';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 function App() {
   const [view, setView] = useState('admin');
@@ -101,9 +104,9 @@ function App() {
     const { error } = await supabase.from('players_db').insert([{ name: newPlayerName.trim(), ranking: newPlayerRanking }]);
     if (error) {
       if (error.code === '23505') {
-        alert('️ Este jugador ya existe en la base de datos');
+        alert('⚠️ Este jugador ya existe en la base de datos');
       } else {
-        alert('❌ Error: ' + error.message);
+        alert(' Error: ' + error.message);
       }
     } else {
       setNewPlayerName('');
@@ -116,7 +119,7 @@ function App() {
     if (!confirm('¿Estás seguro de eliminar este jugador de la base de datos?')) return;
     const { error } = await supabase.from('players_db').delete().eq('id', playerId);
     if (error) {
-      alert('❌ Error: ' + error.message);
+      alert(' Error: ' + error.message);
     } else {
       fetchPlayersDb();
     }
@@ -183,11 +186,8 @@ function App() {
     return `Ronda ${roundNum}`;
   };
 
-  // --- FUNCIÓN CORREGIDA ---
   const generateEliminationBracket = async () => {
     if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
-
-    // 1. Borrar partidos anteriores
     await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
 
     const sorted = [...players].sort((a, b) => a.ranking - b.ranking);
@@ -199,7 +199,6 @@ function App() {
     const totalRounds = Math.log2(size);
     let tableNumber = 1;
 
-    // 2. Crear estructura en memoria
     const roundsData = [];
     for (let round = 1; round <= totalRounds; round++) {
       const matchesInThisRound = Math.pow(2, totalRounds - round);
@@ -223,7 +222,6 @@ function App() {
       roundsData.push(roundMatches);
     }
 
-    // 3. Asignar jugadores a la primera ronda y manejar BYEs
     const firstRound = roundsData[0];
     const seedOrder = generateSeedOrder(size);
 
@@ -251,7 +249,6 @@ function App() {
       firstRound[i].status = status;
     }
 
-    // 4. Propagar BYEs a la siguiente ronda en memoria
     for (let round = 0; round < totalRounds - 1; round++) {
       const currentRound = roundsData[round];
       const nextRound = roundsData[round + 1];
@@ -270,7 +267,6 @@ function App() {
       }
     }
 
-    // 5. Insertar en Supabase y obtener los IDs reales generados
     const flatMatches = roundsData.flat();
     const { data: insertedMatches, error } = await supabase
       .from('matches')
@@ -282,9 +278,6 @@ function App() {
       return;
     }
 
-    console.log('📋 Partidos insertados:', insertedMatches);
-
-    // 6. Calcular las conexiones (next_match_id) usando los IDs reales
     const updates = [];
     for (let round = 0; round < totalRounds - 1; round++) {
       const currentRoundMatches = insertedMatches.filter(m => m.round_number === round + 1);
@@ -303,27 +296,14 @@ function App() {
       }
     }
 
-    console.log('🔗 Conexiones a actualizar:', updates);
-
-    // 7. Actualizar las conexiones en la base de datos
     if (updates.length > 0) {
-      const { error: updateError } = await supabase
-        .from('matches')
-        .upsert(updates, { onConflict: 'id' });
-      
-      if (updateError) {
-        console.error('Error al actualizar conexiones:', updateError);
-        alert('⚠️ Los partidos se crearon pero las conexiones fallaron.');
-      } else {
-        console.log('✅ Conexiones actualizadas correctamente');
-      }
+      await supabase.from('matches').upsert(updates, { onConflict: 'id' });
     }
 
     const numByes = size - n;
     alert(`✅ Cuadro completo generado:\n\n${n} jugadores\n${numByes} BYEs\n${totalRounds} rondas totales\nTotal partidos: ${flatMatches.length}`);
     fetchMatches(selectedTournamentId);
   };
-  // --- FIN FUNCIÓN CORREGIDA ---
 
   const generateRoundRobin = async () => {
     if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
@@ -385,7 +365,7 @@ function App() {
 
   const openRefereeView = (match) => {
     if (match.status === 'completed') return alert('⚠️ Este partido ya fue finalizado.');
-    if (!match.player1_id || !match.player2_id) return alert('️ Este partido aún no tiene jugadores definidos. Espera a que los ganadores de la ronda anterior avancen.');
+    if (!match.player1_id || !match.player2_id) return alert('⚠️ Este partido aún no tiene jugadores definidos.');
     setActiveMatch(match);
     setCurrentSet({ p1: 0, p2: 0 });
     setSets([]);
@@ -425,77 +405,27 @@ function App() {
 
   const sendToSupabase = async (payload) => {
     try {
-      console.log('📤 Enviando resultado:', payload);
+      await supabase.from('matches').update({ status: 'completed', winner_id: payload.winnerId }).eq('id', payload.matchId);
       
-      const { error: updateError } = await supabase
-        .from('matches')
-        .update({ 
-          status: 'completed', 
-          winner_id: payload.winnerId 
-        })
-        .eq('id', payload.matchId);
-      
-      if (updateError) {
-        console.error('Error al actualizar partido:', updateError);
-        throw updateError;
-      }
-      
-      console.log('✅ Partido actualizado');
-      
-      const setsToInsert = payload.sets.map(s => ({ 
-        match_id: payload.matchId, 
-        player1_score: s.p1, 
-        player2_score: s.p2 
-      }));
-      
-      const { error: setsError } = await supabase.from('sets').insert(setsToInsert);
-      if (setsError) {
-        console.error('Error al insertar sets:', setsError);
-      } else {
-        console.log('✅ Sets insertados');
-      }
+      const setsToInsert = payload.sets.map(s => ({ match_id: payload.matchId, player1_score: s.p1, player2_score: s.p2 }));
+      await supabase.from('sets').insert(setsToInsert);
 
-      const { data: currentMatch, error: fetchError } = await supabase
-        .from('matches')
-        .select('next_match_id, slot')
-        .eq('id', payload.matchId)
-        .single();
+      const { data: currentMatch } = await supabase.from('matches').select('next_match_id, slot').eq('id', payload.matchId).single();
       
-      if (fetchError) {
-        console.error('Error al obtener datos del partido:', fetchError);
-      } else {
-        console.log('📋 Datos del partido:', currentMatch);
-        
-        if (currentMatch && currentMatch.next_match_id) {
-          console.log('🔄 Propagando ganador al partido:', currentMatch.next_match_id);
-          
-          const updateData = {};
-          if (currentMatch.slot === 1) {
-            updateData.player1_id = payload.winnerId;
-          } else if (currentMatch.slot === 2) {
-            updateData.player2_id = payload.winnerId;
-          }
-          
-          console.log('📝 Actualizando:', updateData);
-          
-          const { error: nextMatchError } = await supabase
-            .from('matches')
-            .update(updateData)
-            .eq('id', currentMatch.next_match_id);
-          
-          if (nextMatchError) {
-            console.error('Error al actualizar siguiente partido:', nextMatchError);
-          } else {
-            console.log('✅ Ganador propagado exitosamente');
-          }
-        } else {
-          console.log('ℹ️ No hay siguiente partido (es la final)');
+      if (currentMatch && currentMatch.next_match_id) {
+        const updateData = {};
+        if (currentMatch.slot === 1) {
+          updateData.player1_id = payload.winnerId;
+        } else if (currentMatch.slot === 2) {
+          updateData.player2_id = payload.winnerId;
         }
+        
+        await supabase.from('matches').update(updateData).eq('id', currentMatch.next_match_id);
       }
 
       alert('✅ Resultado enviado. Ganador avanza a la siguiente ronda.');
     } catch (error) {
-      console.error('Error completo:', error);
+      console.error('Error:', error);
       await localforage.setItem(`pending_match_${payload.matchId}_${Date.now()}`, payload);
       updatePendingCount();
     }
@@ -523,6 +453,122 @@ function App() {
       if (selectedTournamentId) fetchMatches(selectedTournamentId);
     }
   };
+
+  // --- FUNCIONES DE EXPORTACIÓN ---
+
+  const exportBracketToPDF = () => {
+    if (matches.length === 0) return alert('⚠️ No hay partidos para exportar');
+    
+    const tournament = tournaments.find(t => t.id === selectedTournamentId);
+    const doc = new jsPDF();
+    
+    // Título
+    doc.setFontSize(20);
+    doc.setTextColor(30, 58, 138);
+    doc.text(`Torneo: ${tournament?.name || 'Sin nombre'}`, 14, 20);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Formato: ${tournament?.format === 'eliminacion' ? 'Eliminación Directa' : 'Todos contra Todos'}`, 14, 28);
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-ES')}`, 14, 34);
+    doc.text(`Jugadores: ${players.length}`, 14, 40);
+    
+    // Tabla de partidos
+    const tableData = matches.map(m => [
+      m.table_number.toString(),
+      m.round,
+      getPlayerName(m.player1_id),
+      getPlayerName(m.player2_id),
+      m.status === 'completed' ? getPlayerName(m.winner_id) : 'Pendiente'
+    ]);
+    
+    doc.autoTable({
+      startY: 50,
+      head: [['Mesa', 'Ronda', 'Jugador 1', 'Jugador 2', 'Ganador']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [30, 58, 138], textColor: 255 },
+      styles: { fontSize: 10, cellPadding: 3 },
+      alternateRowStyles: { fillColor: [248, 250, 252] }
+    });
+    
+    doc.save(`bracket-${tournament?.name || 'torneo'}.pdf`);
+    alert('✅ PDF exportado correctamente');
+  };
+
+  const exportStandingsToExcel = () => {
+    if (matches.length === 0) return alert('⚠️ No hay partidos para exportar');
+    
+    // Calcular estadísticas
+    const standings = players.map(player => {
+      const playerMatches = matches.filter(m => 
+        m.status === 'completed' && 
+        (m.player1_id === player.id || m.player2_id === player.id)
+      );
+      
+      const matchesPlayed = playerMatches.length;
+      const matchesWon = playerMatches.filter(m => m.winner_id === player.id).length;
+      const matchesLost = matchesPlayed - matchesWon;
+      
+      return {
+        'Jugador': player.name,
+        'Ranking': player.ranking,
+        'PJ': matchesPlayed,
+        'PG': matchesWon,
+        'PP': matchesLost,
+        '% Victoria': matchesPlayed > 0 ? ((matchesWon / matchesPlayed) * 100).toFixed(1) + '%' : '0%'
+      };
+    });
+    
+    // Ordenar por partidos ganados
+    standings.sort((a, b) => b.PG - a.PG);
+    
+    const tournament = tournaments.find(t => t.id === selectedTournamentId);
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(standings);
+    
+    // Ajustar ancho de columnas
+    ws['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 12 }];
+    
+    XLSX.utils.book_append_sheet(wb, ws, 'Posiciones');
+    XLSX.writeFile(wb, `posiciones-${tournament?.name || 'torneo'}.xlsx`);
+    alert('✅ Excel exportado correctamente');
+  };
+
+  const shareViaWhatsApp = () => {
+    if (matches.length === 0) return alert('️ No hay partidos para compartir');
+    
+    const tournament = tournaments.find(t => t.id === selectedTournamentId);
+    const completedMatches = matches.filter(m => m.status === 'completed');
+    const pendingMatches = matches.filter(m => m.status === 'pending');
+    
+    let message = `🏓 *TORNEO: ${tournament?.name || 'Sin nombre'}*\n\n`;
+    message += `📊 *Resumen:*\n`;
+    message += `• Jugadores: ${players.length}\n`;
+    message += `• Partidos jugados: ${completedMatches.length}\n`;
+    message += `• Partidos pendientes: ${pendingMatches.length}\n\n`;
+    
+    if (completedMatches.length > 0) {
+      message += `✅ *Partidos Finalizados:*\n`;
+      completedMatches.forEach(m => {
+        message += `• ${m.round} - ${getPlayerName(m.player1_id)} vs ${getPlayerName(m.player2_id)} → Ganador: ${getPlayerName(m.winner_id)}\n`;
+      });
+    }
+    
+    if (pendingMatches.length > 0) {
+      message += `\n⏳ *Partidos Pendientes:*\n`;
+      pendingMatches.forEach(m => {
+        message += `• ${m.round} - ${getPlayerName(m.player1_id)} vs ${getPlayerName(m.player2_id)}\n`;
+      });
+    }
+    
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
+    
+    window.open(whatsappUrl, '_blank');
+  };
+
+  // --- VISTAS ---
 
   if (view === 'referee' && activeMatch) {
     const p1Name = getPlayerName(activeMatch.player1_id);
@@ -587,8 +633,12 @@ function App() {
   if (view === 'standings') {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ color: '#1e3a8a', margin: 0 }}> Clasificación del Torneo</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}>📊 Clasificación del Torneo</h1>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button onClick={exportStandingsToExcel} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📊 Excel</button>
+            <button onClick={shareViaWhatsApp} style={{ padding: '10px 20px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}> WhatsApp</button>
+          </div>
           <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>← Volver</button>
         </div>
         {matches.length === 0 ? (
@@ -607,7 +657,7 @@ function App() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏓 Gestor de Torneos</h1>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}> Posiciones</button>
+          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📊 Posiciones</button>
           <button onClick={() => setView('bracket')} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🏆 Bracket</button>
           <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>⚖️ Árbitro</button>
         </div>
@@ -704,6 +754,23 @@ function App() {
                   )}
                 </div>
               </div>
+
+              {matches.length > 0 && (
+                <div style={{ marginTop: '20px', padding: '15px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+                  <h4 style={{ margin: '0 0 15px 0', color: '#1e40af' }}>📤 Exportar Resultados</h4>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button onClick={exportBracketToPDF} style={{ flex: 1, padding: '12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      📄 Exportar Bracket a PDF
+                    </button>
+                    <button onClick={exportStandingsToExcel} style={{ flex: 1, padding: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                       Exportar Tabla a Excel
+                    </button>
+                    <button onClick={shareViaWhatsApp} style={{ flex: 1, padding: '12px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                      📱 Compartir por WhatsApp
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div style={{ marginTop: '20px', padding: '15px', background: '#fee2e2', borderRadius: '8px', border: '1px solid #ef4444' }}>
                 <button onClick={() => handleDeleteTournament(selectedTournamentId)} style={{ width: '100%', padding: '12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
