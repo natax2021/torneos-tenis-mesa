@@ -3,11 +3,15 @@ import { supabase } from './lib/supabaseClient';
 import localforage from 'localforage';
 import BracketView from './BracketView';
 import StandingsTable from './StandingsTable';
+import Login from './Login';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 function App() {
+  const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState('admin');
   const [tournaments, setTournaments] = useState([]);
   const [players, setPlayers] = useState([]);
@@ -28,9 +32,7 @@ function App() {
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
-    fetchTournaments();
-    fetchPlayersDb();
-    updatePendingCount();
+    checkUser();
     
     const handleOnline = () => { setIsOnline(true); syncPendingScores(); };
     const handleOffline = () => setIsOnline(false);
@@ -49,6 +51,44 @@ function App() {
       fetchMatches(selectedTournamentId);
     }
   }, [selectedTournamentId]);
+
+  const checkUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      setUser(session.user);
+      await fetchUserProfile(session.user.id);
+      fetchTournaments();
+      fetchPlayersDb();
+      updatePendingCount();
+    }
+    setLoading(false);
+  };
+
+  const fetchUserProfile = async (userId) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) setUserProfile(data);
+  };
+
+  const handleLogin = (user) => {
+    setUser(user);
+    fetchUserProfile(user.id);
+    fetchTournaments();
+    fetchPlayersDb();
+    updatePendingCount();
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setUserProfile(null);
+    setTournaments([]);
+    setPlayersDb([]);
+    setView('admin');
+  };
 
   const fetchTournaments = async () => {
     const { data } = await supabase.from('tournaments').select('*').order('created_at', { ascending: false });
@@ -72,6 +112,7 @@ function App() {
 
   const handleCreateTournament = async (e) => {
     e.preventDefault();
+    if (userProfile?.role !== 'organizer') return alert('️ Solo los organizadores pueden crear torneos');
     if (!newTournamentName.trim()) return alert('⚠️ Escribe un nombre');
     const { error } = await supabase.from('tournaments').insert([{ name: newTournamentName.trim(), format: newTournamentFormat, best_of: 3 }]);
     if (error) alert('❌ Error: ' + error.message);
@@ -83,6 +124,7 @@ function App() {
   };
 
   const handleDeleteTournament = async (tournamentId) => {
+    if (userProfile?.role !== 'organizer') return alert('️ Solo los organizadores pueden eliminar torneos');
     if (!confirm('⚠️ ¿Estás seguro de eliminar este torneo y todos sus datos?')) return;
     const { error } = await supabase.from('tournaments').delete().eq('id', tournamentId);
     if (error) {
@@ -100,13 +142,14 @@ function App() {
 
   const handleAddPlayerToDb = async (e) => {
     e.preventDefault();
+    if (userProfile?.role !== 'organizer') return alert('⚠️ Solo los organizadores pueden agregar jugadores');
     if (!newPlayerName.trim()) return alert('⚠️ Escribe un nombre');
     const { error } = await supabase.from('players_db').insert([{ name: newPlayerName.trim(), ranking: newPlayerRanking }]);
     if (error) {
       if (error.code === '23505') {
         alert('⚠️ Este jugador ya existe en la base de datos');
       } else {
-        alert(' Error: ' + error.message);
+        alert('❌ Error: ' + error.message);
       }
     } else {
       setNewPlayerName('');
@@ -116,6 +159,7 @@ function App() {
   };
 
   const handleDeletePlayerFromDb = async (playerId) => {
+    if (userProfile?.role !== 'organizer') return alert('⚠️ Solo los organizadores pueden eliminar jugadores');
     if (!confirm('¿Estás seguro de eliminar este jugador de la base de datos?')) return;
     const { error } = await supabase.from('players_db').delete().eq('id', playerId);
     if (error) {
@@ -126,8 +170,9 @@ function App() {
   };
 
   const handleAddPlayerFromDb = async () => {
+    if (userProfile?.role !== 'organizer') return alert('⚠️ Solo los organizadores pueden agregar jugadores al torneo');
     if (!selectedPlayerDbId || !selectedTournamentId) {
-      return alert('️ Selecciona un jugador y un torneo');
+      return alert('⚠️ Selecciona un jugador y un torneo');
     }
     const selectedPlayer = playersDb.find(p => p.id === selectedPlayerDbId);
     if (!selectedPlayer) return;
@@ -149,6 +194,7 @@ function App() {
   };
 
   const handleRemovePlayerFromTournament = async (playerId) => {
+    if (userProfile?.role !== 'organizer') return alert('️ Solo los organizadores pueden eliminar jugadores del torneo');
     if (!confirm('¿Eliminar este jugador del torneo?')) return;
     const { error } = await supabase.from('players').delete().eq('id', playerId);
     if (error) {
@@ -187,6 +233,7 @@ function App() {
   };
 
   const generateEliminationBracket = async () => {
+    if (userProfile?.role !== 'organizer') return alert('⚠️ Solo los organizadores pueden generar el cuadro');
     if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
     await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
 
@@ -306,6 +353,7 @@ function App() {
   };
 
   const generateRoundRobin = async () => {
+    if (userProfile?.role !== 'organizer') return alert('⚠️ Solo los organizadores pueden generar el calendario');
     if (players.length < 2) return alert('⚠️ Necesitas al menos 2 jugadores');
     await supabase.from('matches').delete().eq('tournament_id', selectedTournamentId);
 
@@ -364,7 +412,10 @@ function App() {
   };
 
   const openRefereeView = (match) => {
-    if (match.status === 'completed') return alert('⚠️ Este partido ya fue finalizado.');
+    if (userProfile?.role !== 'referee' && userProfile?.role !== 'organizer') {
+      return alert('⚠️ Solo los árbitros y organizadores pueden anotar partidos');
+    }
+    if (match.status === 'completed') return alert('️ Este partido ya fue finalizado.');
     if (!match.player1_id || !match.player2_id) return alert('⚠️ Este partido aún no tiene jugadores definidos.');
     setActiveMatch(match);
     setCurrentSet({ p1: 0, p2: 0 });
@@ -454,10 +505,8 @@ function App() {
     }
   };
 
-  // --- FUNCIONES DE EXPORTACIÓN ---
-
-    const exportBracketToPDF = () => {
-    if (matches.length === 0) return alert('⚠️ No hay partidos para exportar');
+  const exportBracketToPDF = () => {
+    if (matches.length === 0) return alert('️ No hay partidos para exportar');
     
     try {
       const tournament = tournaments.find(t => t.id === selectedTournamentId);
@@ -526,7 +575,6 @@ function App() {
           doc.text(p1Name.substring(0, 20), xPos + 3, yPos + 10);
           
           if (match.status === 'completed') {
-            // CORRECCIÓN AQUÍ: Usar ternario para cada argumento por separado
             doc.setFillColor(p1Won ? 22 : 241, p1Won ? 163 : 245, p1Won ? 74 : 249);
             doc.roundedRect(xPos + 52, yPos + 5, 10, 8, 2, 2, 'F');
             doc.setTextColor(255, 255, 255);
@@ -544,7 +592,6 @@ function App() {
           doc.text(p2Name.substring(0, 20), xPos + 3, yPos + 22);
           
           if (match.status === 'completed') {
-            // CORRECCIÓN AQUÍ: Usar ternario para cada argumento por separado
             doc.setFillColor(p2Won ? 22 : 241, p2Won ? 163 : 245, p2Won ? 74 : 249);
             doc.roundedRect(xPos + 52, yPos + 17, 10, 8, 2, 2, 'F');
             doc.setTextColor(255, 255, 255);
@@ -628,14 +675,14 @@ function App() {
   };
 
   const shareViaWhatsApp = () => {
-    if (matches.length === 0) return alert('⚠️ No hay partidos para compartir');
+    if (matches.length === 0) return alert('️ No hay partidos para compartir');
     
     const tournament = tournaments.find(t => t.id === selectedTournamentId);
     const completedMatches = matches.filter(m => m.status === 'completed');
     const pendingMatches = matches.filter(m => m.status === 'pending');
     
     let message = `🏓 *TORNEO: ${tournament?.name || 'Sin nombre'}*\n\n`;
-    message += ` *Resumen:*\n`;
+    message += `📊 *Resumen:*\n`;
     message += `• Jugadores: ${players.length}\n`;
     message += `• Partidos jugados: ${completedMatches.length}\n`;
     message += `• Partidos pendientes: ${pendingMatches.length}\n\n`;
@@ -660,8 +707,26 @@ function App() {
     window.open(whatsappUrl, '_blank');
   };
 
-  // --- VISTAS ---
+  // Mostrar Login si no hay usuario
+  if (loading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      }}>
+        <div style={{ color: 'white', fontSize: '24px' }}>Cargando...</div>
+      </div>
+    );
+  }
 
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  // Vista de árbitro
   if (view === 'referee' && activeMatch) {
     const p1Name = getPlayerName(activeMatch.player1_id);
     const p2Name = getPlayerName(activeMatch.player2_id);
@@ -704,11 +769,12 @@ function App() {
     );
   }
 
+  // Vista de bracket
   if (view === 'bracket') {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏆 Cuadro del Torneo</h1>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}> Cuadro del Torneo</h1>
           <button onClick={() => setView('admin')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>← Volver</button>
         </div>
         {matches.length === 0 ? (
@@ -722,6 +788,7 @@ function App() {
     );
   }
 
+  // Vista de standings
   if (view === 'standings') {
     return (
       <div style={{ fontFamily: 'system-ui, sans-serif', padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -744,56 +811,81 @@ function App() {
     );
   }
 
+  // Vista principal (admin)
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '1200px', margin: '0 auto', padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-        <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏓 Gestor de Torneos</h1>
+        <div>
+          <h1 style={{ color: '#1e3a8a', margin: 0 }}>🏓 Gestor de Torneos</h1>
+          <div style={{ fontSize: '14px', color: '#64748b', marginTop: '5px' }}>
+            👤 {userProfile?.full_name || user.email} 
+            <span style={{ 
+              marginLeft: '10px', 
+              padding: '2px 8px', 
+              background: userProfile?.role === 'organizer' ? '#fbbf24' : userProfile?.role === 'referee' ? '#60a5fa' : '#94a3b8',
+              color: 'white',
+              borderRadius: '4px',
+              fontSize: '12px'
+            }}>
+              {userProfile?.role === 'organizer' ? '👑 Organizador' : userProfile?.role === 'referee' ? '️ Árbitro' : '👁️ Espectador'}
+            </span>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>📊 Posiciones</button>
-          <button onClick={() => setView('bracket')} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🏆 Bracket</button>
-          <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>⚖️ Árbitro</button>
+          <button onClick={() => setView('standings')} style={{ padding: '10px 20px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}> Posiciones</button>
+          <button onClick={() => setView('bracket')} style={{ padding: '10px 20px', background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}> Bracket</button>
+          {(userProfile?.role === 'referee' || userProfile?.role === 'organizer') && (
+            <button onClick={() => setView('referee')} style={{ padding: '10px 20px', background: '#7c3aed', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>⚖️ Árbitro</button>
+          )}
+          <button onClick={handleLogout} style={{ padding: '10px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>🚪 Salir</button>
         </div>
       </div>
 
-      <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-        <h2>1. Crear Torneo</h2>
-        <form onSubmit={handleCreateTournament}>
-          <input type="text" placeholder="Nombre del Torneo" value={newTournamentName} onChange={(e) => setNewTournamentName(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-          <select value={newTournamentFormat} onChange={(e) => setNewTournamentFormat(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-            <option value="eliminacion">🏆 Eliminación Directa</option>
-            <option value="round_robin">🔄 Todos contra Todos</option>
-          </select>
-          <button type="submit" style={{ width: '100%', padding: '14px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Crear Torneo</button>
-        </form>
-      </section>
+      {/* Sección solo para organizadores */}
+      {userProfile?.role === 'organizer' && (
+        <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+          <h2>1. Crear Torneo</h2>
+          <form onSubmit={handleCreateTournament}>
+            <input type="text" placeholder="Nombre del Torneo" value={newTournamentName} onChange={(e) => setNewTournamentName(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            <select value={newTournamentFormat} onChange={(e) => setNewTournamentFormat(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+              <option value="eliminacion">🏆 Eliminación Directa</option>
+              <option value="round_robin"> Todos contra Todos</option>
+            </select>
+            <button type="submit" style={{ width: '100%', padding: '14px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Crear Torneo</button>
+          </form>
+        </section>
+      )}
 
-      <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-        <h2>2. Base de Datos de Jugadores</h2>
-        <form onSubmit={handleAddPlayerToDb} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <input type="text" placeholder="Nombre del jugador" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} style={{ flex: 2, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
-          <input type="number" placeholder="Ranking" value={newPlayerRanking} onChange={(e) => setNewPlayerRanking(Number(e.target.value))} style={{ flex: 1, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} min="1" />
-          <button type="submit" style={{ padding: '12px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Agregar a BD</button>
-        </form>
+      {/* Base de datos de jugadores solo para organizadores */}
+      {userProfile?.role === 'organizer' && (
+        <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+          <h2>2. Base de Datos de Jugadores</h2>
+          <form onSubmit={handleAddPlayerToDb} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+            <input type="text" placeholder="Nombre del jugador" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} style={{ flex: 2, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+            <input type="number" placeholder="Ranking" value={newPlayerRanking} onChange={(e) => setNewPlayerRanking(Number(e.target.value))} style={{ flex: 1, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }} min="1" />
+            <button type="submit" style={{ padding: '12px 20px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Agregar a BD</button>
+          </form>
 
-        <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-          {playersDb.length === 0 ? (
-            <p style={{ color: '#64748b', textAlign: 'center' }}>No hay jugadores en la base de datos.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {playersDb.map((p) => (
-                <li key={p.id} style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span><strong>{p.name}</strong> <span style={{ color: '#64748b', fontSize: '12px' }}>(Ranking: {p.ranking})</span></span>
-                  <button onClick={() => handleDeletePlayerFromDb(p.id)} style={{ padding: '4px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Eliminar</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+          <div style={{ maxHeight: '200px', overflowY: 'auto', background: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            {playersDb.length === 0 ? (
+              <p style={{ color: '#64748b', textAlign: 'center' }}>No hay jugadores en la base de datos.</p>
+            ) : (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {playersDb.map((p) => (
+                  <li key={p.id} style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span><strong>{p.name}</strong> <span style={{ color: '#64748b', fontSize: '12px' }}>(Ranking: {p.ranking})</span></span>
+                    <button onClick={() => handleDeletePlayerFromDb(p.id)} style={{ padding: '4px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Eliminar</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      )}
 
       {tournaments.length > 0 && (
         <section style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-          <h2>3. Gestionar Torneos</h2>
+          <h2>{userProfile?.role === 'organizer' ? '3. Gestionar Torneos' : 'Ver Torneos'}</h2>
           <select value={selectedTournamentId} onChange={(e) => setSelectedTournamentId(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
             <option value="">-- Selecciona un torneo --</option>
             {tournaments.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -801,13 +893,16 @@ function App() {
 
           {selectedTournamentId && (
             <>
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                <select value={selectedPlayerDbId} onChange={(e) => setSelectedPlayerDbId(e.target.value)} style={{ flex: 2, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                  <option value="">-- Selecciona jugador de la BD --</option>
-                  {playersDb.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <button onClick={handleAddPlayerFromDb} style={{ padding: '12px 20px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Agregar al Torneo</button>
-              </div>
+              {/* Solo organizadores pueden agregar jugadores */}
+              {userProfile?.role === 'organizer' && (
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                  <select value={selectedPlayerDbId} onChange={(e) => setSelectedPlayerDbId(e.target.value)} style={{ flex: 2, padding: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                    <option value="">-- Selecciona jugador de la BD --</option>
+                    {playersDb.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <button onClick={handleAddPlayerFromDb} style={{ padding: '12px 20px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Agregar al Torneo</button>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '300px' }}>
@@ -816,11 +911,13 @@ function App() {
                     {players.map((p) => (
                       <li key={p.id} style={{ background: 'white', padding: '10px', marginBottom: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span><span style={{ background: '#dbeafe', color: '#1e40af', borderRadius: '50%', width: '28px', height: '28px', display: 'inline-block', textAlign: 'center', lineHeight: '28px', fontWeight: 'bold', marginRight: '10px' }}>{p.ranking}</span>{p.name}</span>
-                        <button onClick={() => handleRemovePlayerFromTournament(p.id)} style={{ padding: '4px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Eliminar</button>
+                        {userProfile?.role === 'organizer' && (
+                          <button onClick={() => handleRemovePlayerFromTournament(p.id)} style={{ padding: '4px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>Eliminar</button>
+                        )}
                       </li>
                     ))}
                   </ul>
-                  {players.length >= 2 && (
+                  {userProfile?.role === 'organizer' && players.length >= 2 && (
                     <button onClick={handleGenerateBracket} style={{ width: '100%', padding: '14px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                       🏆 GENERAR {tournaments.find(t => t.id === selectedTournamentId)?.format === 'round_robin' ? 'CALENDARIO' : 'CUADRO'}
                     </button>
@@ -837,9 +934,11 @@ function App() {
                             <strong>Mesa {match.table_number} - {match.round}</strong>
                             <div style={{ fontSize: '14px', color: '#64748b' }}>{getPlayerName(match.player1_id)} vs {getPlayerName(match.player2_id)}</div>
                           </div>
-                          <button onClick={() => openRefereeView(match)} disabled={match.status === 'completed' || !match.player1_id || !match.player2_id} style={{ padding: '8px 16px', background: match.status === 'completed' ? '#94a3b8' : (!match.player1_id || !match.player2_id ? '#cbd5e1' : '#7c3aed'), color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            {match.status === 'completed' ? '✅' : (!match.player1_id || !match.player2_id ? '⏳' : '⚖️')}
-                          </button>
+                          {(userProfile?.role === 'referee' || userProfile?.role === 'organizer') && (
+                            <button onClick={() => openRefereeView(match)} disabled={match.status === 'completed' || !match.player1_id || !match.player2_id} style={{ padding: '8px 16px', background: match.status === 'completed' ? '#94a3b8' : (!match.player1_id || !match.player2_id ? '#cbd5e1' : '#7c3aed'), color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              {match.status === 'completed' ? '✅' : (!match.player1_id || !match.player2_id ? '⏳' : '⚖️')}
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -855,7 +954,7 @@ function App() {
                       📄 Exportar Bracket a PDF
                     </button>
                     <button onClick={exportStandingsToExcel} style={{ flex: 1, padding: '12px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                      📊 Exportar Tabla a Excel
+                       Exportar Tabla a Excel
                     </button>
                     <button onClick={shareViaWhatsApp} style={{ flex: 1, padding: '12px', background: '#25d366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
                       📱 Compartir por WhatsApp
@@ -864,11 +963,13 @@ function App() {
                 </div>
               )}
 
-              <div style={{ marginTop: '20px', padding: '15px', background: '#fee2e2', borderRadius: '8px', border: '1px solid #ef4444' }}>
-                <button onClick={() => handleDeleteTournament(selectedTournamentId)} style={{ width: '100%', padding: '12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
-                  ️ ELIMINAR TORNEO
-                </button>
-              </div>
+              {userProfile?.role === 'organizer' && (
+                <div style={{ marginTop: '20px', padding: '15px', background: '#fee2e2', borderRadius: '8px', border: '1px solid #ef4444' }}>
+                  <button onClick={() => handleDeleteTournament(selectedTournamentId)} style={{ width: '100%', padding: '12px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    🗑️ ELIMINAR TORNEO
+                  </button>
+                </div>
+              )}
             </>
           )}
         </section>
